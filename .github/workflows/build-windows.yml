@@ -76,6 +76,20 @@ jobs:
           pnpm run build:extensions
           pnpm run validate:extra-resources
 
+      # electron-builder would tag the release on the source repo's commit, which
+      # does not exist here; create the tag and release on this repo first and
+      # let electron-builder upload into it.
+      - name: Create the release on this repo
+        working-directory: src/packages/electron
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "Version $VERSION"
+          gh release view "v$VERSION" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "v$VERSION" -R "$GITHUB_REPOSITORY" --target main \
+              --title "AXYOM $VERSION" --notes "AXYOM $VERSION for Windows (unsigned). Built from ferbogar-uk/axyom-v01 @ ${{ inputs.ref }}."
+
       - name: Package installer and publish release
         working-directory: src/packages/electron
         env:
