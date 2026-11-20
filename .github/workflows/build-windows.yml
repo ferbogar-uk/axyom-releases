@@ -69,6 +69,9 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=8192
           BUILD_ARCH: x64
         run: |
+          # Bundled local tools (OpenCode CLI, Whisper) are large binaries kept
+          # out of git; this installer ships without them.
+          mkdir -p resources/axyom-tools
           pnpm run build
           pnpm run build:extensions
           pnpm run validate:extra-resources
