@@ -62,6 +62,41 @@ jobs:
           pnpm --dir packages/extension-sdk run build
           pnpm --dir packages/runtime run build
 
+      - name: Fetch bundled tools (OpenCode, Whisper base)
+        # Large binaries kept out of git. Downloaded from their official releases,
+        # each checked against a pinned SHA-256. The Whisper turbo model is left out
+        # on purpose (Ricardo, 20 Nov 2026: base model only, smaller installer).
+        working-directory: src/packages/electron/resources
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          T=axyom-tools
+          W=tmp-tools
+          mkdir -p "$T/opencode" "$T/whisper/Release" "$W"
+          check() { echo "$2  $1" | sha256sum -c -; }
+
+          gh release download v1.19.5 -R anomalyco/opencode -p opencode-windows-x64.zip -D "$W"
+          check "$W/opencode-windows-x64.zip" 09a6e693157f0887e504f2cf4357a8cbddc5ead5d0dffb9a269dcc47c48640f5
+          unzip -q -o "$W/opencode-windows-x64.zip" -d "$W/oc"
+          cp "$(find "$W/oc" -name opencode.exe | head -1)" "$T/opencode/opencode.exe"
+          gh api repos/anomalyco/opencode/contents/LICENSE -H "Accept: application/vnd.github.raw" > "$T/opencode/LICENSE"
+
+          gh release download b5454 -R ggml-org/whisper.cpp -p whisper-bin-x64.zip -D "$W"
+          check "$W/whisper-bin-x64.zip" 6ba69e3482d7826214f90a6a9c84ca07782aec1e1d0c6a7c30c994fd5d816ccb
+          unzip -q -o "$W/whisper-bin-x64.zip" -d "$W/wh"
+          cli="$(find "$W/wh" -name whisper-cli.exe | head -1)"
+          cp "$(dirname "$cli")"/* "$T/whisper/Release/"
+
+          curl -fsSL --retry 3 -o "$T/whisper/ggml-base.bin" https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
+          check "$T/whisper/ggml-base.bin" 60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe
+          curl -fsSL --retry 3 -o "$T/whisper/ggml-silero-v5.1.2.bin" https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin
+          check "$T/whisper/ggml-silero-v5.1.2.bin" 29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf
+
+          rm -rf "$W"
+          test -f "$T/whisper/Release/whisper-cli.exe"
+          du -sh "$T"/* && ls "$T/whisper/Release"
+
       - name: Build the app
         working-directory: src/packages/electron
         env:
@@ -69,9 +104,6 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=8192
           BUILD_ARCH: x64
         run: |
-          # Bundled local tools (OpenCode CLI, Whisper) are large binaries kept
-          # out of git; this installer ships without them.
-          mkdir -p resources/axyom-tools
           pnpm run build
           pnpm run build:extensions
           pnpm run validate:extra-resources
